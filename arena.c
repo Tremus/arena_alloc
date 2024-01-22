@@ -2,18 +2,36 @@
 
 #include <assert.h>
 
-Arena* ArenaAlloc(uint64_t capacity)
+#ifdef _WIN32
+#error TODO
+#elif __APPLE__
+// NOTE: the link says it's for iPhone but it works on macOS
+// https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/mmap.2.html
+// https://developer.apple.com/library/archive/documentation/Performance/Conceptual/ManagingMemory/Articles/AboutMemory.html
+// https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/vm/vm.html
+#include <mach/vm_statistics.h>
+#include <sys/mman.h>
+// TODO: msync?
+#endif
+
+Arena* _ArenaDoAlloc(void* hint, uint64_t capacity)
 {
     assert(capacity > sizeof(Arena));
-    Arena* arena         = malloc(capacity);
+    Arena* arena = mmap(hint, capacity, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    assert(arena != NULL); // I think NULL is a malloc thing. This assertion may be redundant
+    assert((uint64_t)arena != 0xffffffffffffffff);
     arena->capacity      = capacity;
     arena->size          = ARENA_MIN_SIZE;
     arena->autoalignment = 0;
     arena->prev          = NULL;
     arena->next          = NULL;
     arena->data          = (uint64_t)&arena->data;
+
     return arena;
 }
+
+Arena* ArenaAlloc(uint64_t capacity) { return _ArenaDoAlloc(NULL, capacity); }
+
 void ArenaRelease(Arena* arena)
 {
     while (arena->prev != NULL)
@@ -22,7 +40,7 @@ void ArenaRelease(Arena* arena)
     Arena* next = arena->next;
     while (arena != NULL)
     {
-        free(arena);
+        munmap(arena, arena->capacity);
         arena = next;
         if (arena)
             next = arena->next;
@@ -41,7 +59,7 @@ void ArenaSetAutoAlign(Arena* arena, uint64_t align)
 
 uint64_t ArenaPos(Arena* arena) { return arena->data; }
 
-Arena* GetArenaWithCapacity(Arena* arena, size_t size)
+Arena* _GetArenaWithCapacity(Arena* arena, size_t size)
 {
     while ((arena->size + size) > arena->capacity)
     {
@@ -51,7 +69,7 @@ Arena* GetArenaWithCapacity(Arena* arena, size_t size)
             if (size > amt)
                 amt = size;
             amt                        *= 2;
-            arena->next                = ArenaAlloc(amt);
+            arena->next                = _ArenaDoAlloc(NULL, amt);
             arena->next->autoalignment = arena->autoalignment;
             arena->next->prev          = arena;
 
@@ -73,7 +91,7 @@ void* ArenaPushNoZero(Arena* arena, uint64_t size)
 {
     assert(arena->prev == NULL); // first in chain
 
-    arena = GetArenaWithCapacity(arena, size);
+    arena = _GetArenaWithCapacity(arena, size);
 
     void* ptr   = (void*)arena->data;
     arena->size += size;
@@ -86,7 +104,7 @@ void* ArenaPushAligner(Arena* arena, uint64_t aligner)
 
     uint64_t inc = (aligner - (arena->data % aligner)) % aligner;
 
-    arena = GetArenaWithCapacity(arena, inc);
+    arena = _GetArenaWithCapacity(arena, inc);
 
     arena->size += inc;
     arena->data += inc;
