@@ -1,13 +1,20 @@
 #pragma once
+#include <stddef.h>
 #include <stdlib.h>
 
 typedef struct Arena
 {
-    size_t   capacity;
-    size_t   size;
-    size_t   autoalignment;
+    size_t capacity;
+    size_t size;
+    size_t autoalignment;
+
+    struct Arena* prev;
+    struct Arena* next;
+
     uint64_t data;
 } Arena;
+
+#define ARENA_MIN_SIZE offsetof(Arena, data)
 
 Arena* ArenaAlloc(uint64_t capacity);
 void   ArenaRelease(Arena* arena);
