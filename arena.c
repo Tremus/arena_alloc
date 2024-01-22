@@ -1,9 +1,14 @@
 #include "arena.h"
 
-#include <assert.h>
-
 #ifdef _WIN32
-#error TODO
+#include <stdint.h>
+// #include <windows.h>
+// https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+#define MEM_COMMIT 0x00001000
+#define MEM_RESERVE 0x00002000
+#define PAGE_READWRITE 0x04
+extern void* VirtualAlloc(void* lpAddress, size_t dwSize, unsigned long flAllocationType, unsigned long flProtect);
+extern _Bool VirtualFree(void* lpAddress, size_t dwSize, unsigned long dwFreeType);
 #elif __APPLE__
 // NOTE: the link says it's for iPhone but it works on macOS
 // https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/mmap.2.html
@@ -17,9 +22,13 @@
 Arena* _ArenaDoAlloc(void* hint, uint64_t capacity)
 {
     assert(capacity > sizeof(Arena));
+#ifdef _WIN32
+    Arena* arena = VirtualAlloc(hint, capacity, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(arena != NULL);
+#else
     Arena* arena = mmap(hint, capacity, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
-    assert(arena != NULL); // I think NULL is a malloc thing. This assertion may be redundant
     assert((uint64_t)arena != 0xffffffffffffffff);
+#endif
     arena->capacity      = capacity;
     arena->size          = ARENA_MIN_SIZE;
     arena->autoalignment = 0;
@@ -40,7 +49,11 @@ void ArenaRelease(Arena* arena)
     Arena* next = arena->next;
     while (arena != NULL)
     {
+#ifdef _WIN32
+        VirtualFree(arena, arena->capacity, 0);
+#else
         munmap(arena, arena->capacity);
+#endif
         arena = next;
         if (arena)
             next = arena->next;

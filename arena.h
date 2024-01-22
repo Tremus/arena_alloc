@@ -1,6 +1,18 @@
 #pragma once
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
+
+#ifdef _MSC_VER
+#define DEBUG_BREAK __debugbreak()
+#else
+#define DEBUG_BREAK __builtin_debugtrap()
+#endif
+
+#ifdef assert
+#undef assert
+#endif
+#define assert(cond) (cond) ? (void)0 : DEBUG_BREAK
 
 typedef struct Arena
 {

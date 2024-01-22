@@ -1,5 +1,4 @@
 #include "arena.h"
-#include <assert.h>
 
 static const uint64_t ALIGNMENT = 32;
 
